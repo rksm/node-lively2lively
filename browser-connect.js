@@ -1,9 +1,10 @@
 var Connection = require('./browser-client').Connection,
-    url = require("url");
+    url = require("url"),
+    services = require('./default-services');
 
 function connect(options, thenDo) {
     options = options || {};
-    
+
     var baseURL = options.baseURL || "http://localhost:9001/",
         connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
         name = options.name || "browser-alien",
@@ -15,7 +16,10 @@ function connect(options, thenDo) {
 
     session.register();
     session.openForRequests();
-    session.whenOnline(function() { thenDo(null, session); });
+    session.whenOnline(function() {
+        session.addActions(services);
+        thenDo(null, session);
+    });
 }
 
 // -=-=-=-
