@@ -1,7 +1,7 @@
 {
-  "name": "node-2-lively",
+  "name": "lively2lively",
   "version": "0.0.2",
-  "description": "Connect any node.js application to a lively2lively network.",
+  "description": "Connect any node.js or browser application to a lively2lively network.",
   "main": "nodejs-connect.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
