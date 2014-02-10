@@ -1,12 +1,10 @@
 // where do we want to send a message to?
 var targetSessionId = process.argv[2];
-var session = new (require('./index').WebSocketClient)("http://localhost:9001/nodejs/SessionTracker/connect", {
-    protocol: 'lively-json',
-    sender: "I-am-not-a-Lively",
-    debugLevel: 10 // no debug output
-});
+var options = {baseURL: "http://localhost:9001", name: 'test-connection'};
 
-session.on('connect', function() {
+require('./nodejs-connect')(options, function(err, session) {
+    if (err) { console.error(err); return; }
+    console.log("Connected via %s", session);
     session.send({
         action: 'askFor',
         data: {query: "I'm an alien. Talk to me!!!"},
@@ -16,5 +14,3 @@ session.on('connect', function() {
         session.close();
     });
 });
-
-session.connect();
