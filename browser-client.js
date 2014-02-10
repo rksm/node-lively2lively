@@ -620,5 +620,5 @@ console.log('connecting... %s', url);
 
 module.exports = {
     WebSocket: WebSocketHelper,
-    Connection: Connection
+    Connection: Connection,
 };
