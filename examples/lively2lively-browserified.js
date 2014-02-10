@@ -110,7 +110,7 @@ module.exports = {
     log: log
 };
 
-},{"util":7}],2:[function(require,module,exports){
+},{"util":8}],2:[function(require,module,exports){
 var util         = require('util'),
     i            = util.inspect,
     f            = util.format,
@@ -149,6 +149,31 @@ if (typeof lively !== "undefined" && typeof lively.bindings !== "undefined") {
         lively.bindings.disconnect(from, type, to, action);
     }
 } else {
+
+    var registry = [];
+
+    function findConnections(emitter, type, target, action, isOnce) {
+        return registry.filter(function(entry) {
+            return entry[0] === emitter
+                && entry[1] === type
+                && entry[2] === target
+                && entry[3] === action
+                && entry[4] === isOnce
+        });
+    }
+
+    function hasConnection(emitter, type, target, action, isOnce) {
+        return findConnections(emitter, type, target, action, isOnce).length > 0;
+    }
+
+    function removeConnections(emitter, type, target, action, isOnce) {
+        var cs = findConnections(emitter, type, target, action, isOnce);
+        cs.forEach(function(c) {
+            registry.splice(registry.indexOf(c), 1);
+            c[0].removeListener(c[1], c[5]);
+        });
+    }
+
     signal = function(emitter, type, evt) {
         emitter.emit(type, evt);
     }
@@ -156,17 +181,20 @@ if (typeof lively !== "undefined" && typeof lively.bindings !== "undefined") {
     var listenerFuncs = {};
     listen = function(emitter, type, listener, action, options) {
         var once = options && (options.removeAfterUpdate || options.once);
-        emitter[once ? 'once' : 'on'](type, function(evt) {
+        removeConnections(emitter, type, listener, action, once);
+        var listenFunc = function(evt) {
             console.log('fired %s -> %s.%s', type, listener, action);
             listener[action](evt);
-        })
+        }
+        registry.push([emitter, type, listener, action, once, listenFunc]);
+        emitter[once ? 'once' : 'on'](type, listenFunc)
     }
     
-    unlisten = function(from, type, to, action) {
-        // lively.bindings.disconnect(from, type, to, action);
-        console.log('unlisten not yet supported');
+    unlisten = function(emitter, type, listener, action) {
+        removeConnections(emitter, type, listener, action, false);
     }
 }
+
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 function WebSocketHelper(url, options) {
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -736,9 +764,10 @@ module.exports = {
     Connection: Connection,
 };
 
-},{"./base":1,"events":4,"util":7}],3:[function(require,module,exports){
+},{"./base":1,"events":5,"util":8}],3:[function(require,module,exports){
 var Connection = require('./browser-client').Connection,
-    url = require("url");
+    url = require("url"),
+    services = require('./default-services');
 
 function connect(options, thenDo) {
     options = options || {};
@@ -754,7 +783,10 @@ function connect(options, thenDo) {
 
     session.register();
     session.openForRequests();
-    session.whenOnline(function() { thenDo(null, session); });
+    session.whenOnline(function() { 
+        session.addActions(services);
+        thenDo(null, session);
+    });
 }
 
 // -=-=-=-
@@ -763,7 +795,34 @@ function connect(options, thenDo) {
 
 module.exports = connect;
 
-},{"./browser-client":2,"url":6}],4:[function(require,module,exports){
+},{"./browser-client":2,"./default-services":4,"url":7}],4:[function(require,module,exports){
+module.exports = {
+
+    reportServices: function(msg, session) {
+        session.answer(msg, {services: Object.keys(session.getActions())});
+    },
+
+    remoteEvalRequest: function(msg, session) {
+        var result;
+        if (false && !Config.get('lively2livelyAllowRemoteEval')) {
+            result = 'remote eval disabled';
+        } else {
+            try {
+                result = eval(msg.data.expr);
+            } catch(e) {
+                result = e + '\n' + e.stack;
+            }
+        }
+        session.answer(msg, {result: String(result)});
+    },
+
+    messageNotUnderstood: function(msg, session) {
+        console.error('Lively2Lively message not understood:\n%o', msg);
+        session.answer(msg, {error: 'messageNotUnderstood'});
+    }
+
+}
+},{}],5:[function(require,module,exports){
 var process=require("__browserify_process");if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -959,7 +1018,7 @@ EventEmitter.listenerCount = function(emitter, type) {
   return ret;
 };
 
-},{"__browserify_process":8}],5:[function(require,module,exports){
+},{"__browserify_process":9}],6:[function(require,module,exports){
 
 /**
  * Object#toString() ref for stringify().
@@ -1278,7 +1337,7 @@ function decode(str) {
   }
 }
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 var punycode = { encode : function (s) { return s } };
 
 exports.parse = urlParse;
@@ -1884,7 +1943,7 @@ function parseHost(host) {
   return out;
 }
 
-},{"querystring":5}],7:[function(require,module,exports){
+},{"querystring":6}],8:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -2231,7 +2290,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":4}],8:[function(require,module,exports){
+},{"events":5}],9:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};

@@ -36,6 +36,31 @@ if (typeof lively !== "undefined" && typeof lively.bindings !== "undefined") {
         lively.bindings.disconnect(from, type, to, action);
     }
 } else {
+
+    var registry = [];
+
+    function findConnections(emitter, type, target, action, isOnce) {
+        return registry.filter(function(entry) {
+            return entry[0] === emitter
+                && entry[1] === type
+                && entry[2] === target
+                && entry[3] === action
+                && entry[4] === isOnce
+        });
+    }
+
+    function hasConnection(emitter, type, target, action, isOnce) {
+        return findConnections(emitter, type, target, action, isOnce).length > 0;
+    }
+
+    function removeConnections(emitter, type, target, action, isOnce) {
+        var cs = findConnections(emitter, type, target, action, isOnce);
+        cs.forEach(function(c) {
+            registry.splice(registry.indexOf(c), 1);
+            c[0].removeListener(c[1], c[5]);
+        });
+    }
+
     signal = function(emitter, type, evt) {
         emitter.emit(type, evt);
     }
@@ -43,17 +68,20 @@ if (typeof lively !== "undefined" && typeof lively.bindings !== "undefined") {
     var listenerFuncs = {};
     listen = function(emitter, type, listener, action, options) {
         var once = options && (options.removeAfterUpdate || options.once);
-        emitter[once ? 'once' : 'on'](type, function(evt) {
+        removeConnections(emitter, type, listener, action, once);
+        var listenFunc = function(evt) {
             console.log('fired %s -> %s.%s', type, listener, action);
             listener[action](evt);
-        })
+        }
+        registry.push([emitter, type, listener, action, once, listenFunc]);
+        emitter[once ? 'once' : 'on'](type, listenFunc)
     }
     
-    unlisten = function(from, type, to, action) {
-        // lively.bindings.disconnect(from, type, to, action);
-        console.log('unlisten not yet supported');
+    unlisten = function(emitter, type, listener, action) {
+        removeConnections(emitter, type, listener, action, false);
     }
 }
+
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 function WebSocketHelper(url, options) {
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
