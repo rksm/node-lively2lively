@@ -352,6 +352,10 @@ util.inherits(Connection, EventEmitter);
 
 (function() {
 
+    this.reactTo = function(type, callback) {
+        listen(this, type, {cb: callback}, 'cb');
+    }
+
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // initializing
 
@@ -377,7 +381,6 @@ util.inherits(Connection, EventEmitter);
         var url = String(this.sessionTrackerURL);
         // FIXME
         if (!/connect\/?$/.test(url)) url = url.replace(/\/?$/, '/connect')
-console.log('connecting... %s', url);
         this.webSocket = new WebSocketHelper(url, {protocol: "lively-json", enableReconnect: true});
         listen(this.webSocket, 'error', this, 'connectionError');
         this.listen();
@@ -440,10 +443,11 @@ console.log('connecting... %s', url);
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // server management
 
-    this.getSessions = function(cb) {
+    this.getSessions = function(cb, forceFresh) {
         // if timeout specified throttle requests so that they happen at most
         // timeout-often
         var to = this.getSessionsCacheInvalidationTimeout;
+        if (forceFresh) delete this._getSessionsCachedResult;
         if (to && this._getSessionsCachedResult) {
             cb && cb(this._getSessionsCachedResult); return; }
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -505,13 +509,13 @@ console.log('connecting... %s', url);
         this.trackerId = msg.data && msg.data.tracker && msg.data.tracker.id;
         listen(this.webSocket, 'closed', this, 'connectionClosed', {
             removeAfterUpdate: true});
-        signal(this, 'established');
+        signal(this, 'established', this);
         this.startReportingActivities();
         console.log('%s established', this.toString(true));
     }
 
     this.connectionClosed = function() {
-        if (this.sessionId && this.status() === 'connected') { this._status = 'connecting'; this.register(); }
+        if (this.sessionId && this.status() === 'connected') { this._status = 'connecting'; signal(this, 'connecting'); this.register(); }
         else { this._status = 'disconnected'; signal(this, 'closed'); }
         console.log('%s closed', this.toString(true));
     }
@@ -599,7 +603,7 @@ console.log('connecting... %s', url);
         if (!Object.isFunction(obj.copy)) { throw new Error('object needs to support #copy for being send'); }
         var stringifiedCopy = obj.copy(true/*stringify*/);
         if (!Object.isString(stringifiedCopy)) { throw new Error('object needs to return a string to copy(true)'); }
-        withObjectDo = options.withObjectDo;
+        var withObjectDo = options.withObjectDo;
         if (Object.isFunction(withObjectDo)) withObjectDo = '(' + String(withObjectDo) + ')';
         this.sendTo(targetId, 'copyObject', {object: stringifiedCopy, withObjectDo: withObjectDo}, callback);
     }
