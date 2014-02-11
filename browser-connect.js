@@ -1,6 +1,9 @@
 var Connection = require('./browser-client').Connection,
-    url = require("url"),
-    services = require('./default-services');
+    url        = require("url"),
+    services   = require('./default-services'),
+    dbgHelper  = require('./browser-helper');
+
+window._dbgHelper = dbgHelper;
 
 function connect(options, thenDo) {
     options = options || {};

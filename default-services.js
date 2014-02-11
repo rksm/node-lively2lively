@@ -1,3 +1,5 @@
+var getCompletions = require('./completion');
+
 module.exports = {
 
     reportServices: function(msg, session) {
@@ -16,6 +18,20 @@ module.exports = {
             }
         }
         session.answer(msg, {result: String(result)});
+    },
+
+    completions: function(msg, session) {
+        getCompletions(
+            function(code) { return eval(code); },
+            msg.data.expr,
+            function(err, completions, startLetters) {
+                console.log(completions);
+                session.answer(msg, {
+                    error: err ? String(err) : null,
+                    completions: completions,
+                    prefix: startLetters
+                });
+            });
     },
 
     messageNotUnderstood: function(msg, session) {

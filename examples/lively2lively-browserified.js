@@ -110,7 +110,7 @@ module.exports = {
     log: log
 };
 
-},{"util":8}],2:[function(require,module,exports){
+},{"util":10}],2:[function(require,module,exports){
 var util         = require('util'),
     i            = util.inspect,
     f            = util.format,
@@ -465,6 +465,10 @@ util.inherits(Connection, EventEmitter);
 
 (function() {
 
+    this.reactTo = function(type, callback) {
+        listen(this, type, {cb: callback}, 'cb');
+    }
+
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // initializing
 
@@ -490,7 +494,6 @@ util.inherits(Connection, EventEmitter);
         var url = String(this.sessionTrackerURL);
         // FIXME
         if (!/connect\/?$/.test(url)) url = url.replace(/\/?$/, '/connect')
-console.log('connecting... %s', url);
         this.webSocket = new WebSocketHelper(url, {protocol: "lively-json", enableReconnect: true});
         listen(this.webSocket, 'error', this, 'connectionError');
         this.listen();
@@ -553,10 +556,11 @@ console.log('connecting... %s', url);
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // server management
 
-    this.getSessions = function(cb) {
+    this.getSessions = function(cb, forceFresh) {
         // if timeout specified throttle requests so that they happen at most
         // timeout-often
         var to = this.getSessionsCacheInvalidationTimeout;
+        if (forceFresh) delete this._getSessionsCachedResult;
         if (to && this._getSessionsCachedResult) {
             cb && cb(this._getSessionsCachedResult); return; }
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -618,13 +622,13 @@ console.log('connecting... %s', url);
         this.trackerId = msg.data && msg.data.tracker && msg.data.tracker.id;
         listen(this.webSocket, 'closed', this, 'connectionClosed', {
             removeAfterUpdate: true});
-        signal(this, 'established');
+        signal(this, 'established', this);
         this.startReportingActivities();
         console.log('%s established', this.toString(true));
     }
 
     this.connectionClosed = function() {
-        if (this.sessionId && this.status() === 'connected') { this._status = 'connecting'; this.register(); }
+        if (this.sessionId && this.status() === 'connected') { this._status = 'connecting'; signal(this, 'connecting'); this.register(); }
         else { this._status = 'disconnected'; signal(this, 'closed'); }
         console.log('%s closed', this.toString(true));
     }
@@ -712,7 +716,7 @@ console.log('connecting... %s', url);
         if (!Object.isFunction(obj.copy)) { throw new Error('object needs to support #copy for being send'); }
         var stringifiedCopy = obj.copy(true/*stringify*/);
         if (!Object.isString(stringifiedCopy)) { throw new Error('object needs to return a string to copy(true)'); }
-        withObjectDo = options.withObjectDo;
+        var withObjectDo = options.withObjectDo;
         if (Object.isFunction(withObjectDo)) withObjectDo = '(' + String(withObjectDo) + ')';
         this.sendTo(targetId, 'copyObject', {object: stringifiedCopy, withObjectDo: withObjectDo}, callback);
     }
@@ -764,14 +768,17 @@ module.exports = {
     Connection: Connection,
 };
 
-},{"./base":1,"events":5,"util":8}],3:[function(require,module,exports){
+},{"./base":1,"events":7,"util":10}],3:[function(require,module,exports){
 var Connection = require('./browser-client').Connection,
-    url = require("url"),
-    services = require('./default-services');
+    url        = require("url"),
+    services   = require('./default-services'),
+    dbgHelper  = require('./browser-helper');
+
+window._dbgHelper = dbgHelper;
 
 function connect(options, thenDo) {
     options = options || {};
-    
+
     var baseURL = options.baseURL || "http://localhost:9001/",
         connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
         name = options.name || "browser-alien",
@@ -781,9 +788,14 @@ function connect(options, thenDo) {
             getSessionsCacheInvalidationTimeout: 10*1000
         });
 
+    function unregister() { session.unregister(); }
+    document.addEventListener('onbeforeunload', unregister);
+    session.reactTo('closed', function() {
+        document.removeEventListener('onbeforeunload', unregister); })
+
     session.register();
     session.openForRequests();
-    session.whenOnline(function() { 
+    session.whenOnline(function() {
         session.addActions(services);
         thenDo(null, session);
     });
@@ -795,7 +807,288 @@ function connect(options, thenDo) {
 
 module.exports = connect;
 
-},{"./browser-client":2,"./default-services":4,"url":7}],4:[function(require,module,exports){
+},{"./browser-client":2,"./browser-helper":4,"./default-services":6,"url":9}],4:[function(require,module,exports){
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// debug helper -- inspecting
+
+function inspect(obj, options, depth) {
+    options = options || {};
+    depth = depth || 0;
+    if (!obj) { return print(obj); }
+
+    // print function
+    if (typeof obj === 'function') {
+        function argNames(func) {
+            if (func.superclass) return [];
+            var names = String(func).match(/^[\s\(]*function[^(]*\(([^)]*)\)/)[1].
+                    replace(/\/\/.*?[\r\n]|\/\*(?:.|[\r\n])*?\*\//g, '').
+                    replace(/\s+/g, '').split(',');
+
+            return names.length == 1 && !names[0] ? [] : names;
+        }
+        return options.printFunctionSource ? String(obj) :
+            'function' + (obj.name ? ' ' + obj.name : '')
+          + '(' + argNames(obj).join(',') + ') {/*...*/}';
+    }
+    // print "primitive"
+    switch (obj.constructor) {
+        case String:
+        case Boolean:
+        case RegExp:
+        case Number: return print(obj);
+    };
+
+    if (typeof obj.serializeExpr === 'function') {
+        return obj.serializeExpr();
+    }
+
+    var isArray = obj && Array.isArray(obj),
+        openBr = isArray ? '[' : '{', closeBr = isArray ? ']' : '}';
+    if (options.maxDepth && depth >= options.maxDepth) return openBr + '/*...*/' + closeBr;
+
+    var printedProps = [];
+    if (isArray) {
+        printedProps = obj.map(function(ea) { return inspect(ea, options, depth); });
+    } else {
+        printedProps = Object.keys(obj)
+           // .select(function(key) { return obj.hasOwnProperty(key); })
+            .sort(function(a, b) {
+                var aIsFunc = typeof obj[a] === 'function', bIsFunc = typeof obj[b] === 'function';
+                if (aIsFunc === bIsFunc) {
+                    if (a < b)  return -1;
+                    if (a > b) return 1;
+                    return 0;
+                };
+                return aIsFunc ? 1 : -1;
+            })
+            .map(function(key, i) {
+                if (isArray) inspect(obj[key], options, depth + 1);
+                var printedVal = inspect(obj[key], options, depth + 1);
+                return format('%s: %s',
+                    options.escapeKeys ? print(key) : key, printedVal);
+            });
+    }
+
+    if (printedProps.length === 0) { return openBr + closeBr; }
+
+    var printedPropsJoined = printedProps.join(','),
+        useNewLines = !isArray
+                   && (!options.minLengthForNewLine
+                    || printedPropsJoined.length >= options.minLengthForNewLine),
+        indent = indent('', options.indent || '  ', depth),
+        propIndent = indent('', options.indent || '  ', depth + 1),
+        startBreak = useNewLines ? '\n' + propIndent: '',
+        endBreak = useNewLines ? '\n' + indent : '';
+    if (useNewLines) printedPropsJoined = printedProps.join(',' + startBreak);
+    return openBr + startBreak + printedPropsJoined + endBreak + closeBr;
+}
+
+function print(obj) {
+    if (obj && Array.isArray(obj)) {
+        return '[' + obj.map(function(ea) { return print(ea); }) + ']';
+    }
+    if (typeof obj !== "string") {
+        return String(obj);
+    }
+    var result = String(obj);
+    result = result.replace(/\n/g, '\\n\\\n');
+    result = result.replace(/(")/g, '\\$1');
+    result = '\"' + result + '\"';
+    return result;
+}
+
+function format() {
+    var objects = makeArray(arguments);
+    var format = objects.shift();
+    if (!format) { console.log("Error in Strings>>formatFromArray, first arg is undefined"); };
+
+    function appendText(object, string) {
+        return "" + object;
+    }
+
+    function appendObject(object, string) {
+        return "" + object;
+    }
+
+    function appendInteger(value, string) {
+        return value.toString();
+    }
+
+    function appendFloat(value, string, precision) {
+        if (precision > -1) return value.toFixed(precision);
+        else return value.toString();
+    }
+
+    function appendObject(value, string) { return inspect(value); }
+
+    var appenderMap = {s: appendText, d: appendInteger, i: appendInteger, f: appendFloat, o: appendObject};
+    var reg = /((^%|[^\\]%)(\d+)?(\.)([a-zA-Z]))|((^%|[^\\]%)([a-zA-Z]))/;
+
+    function parseFormat(fmt) {
+        var oldFmt = fmt;
+        var parts = [];
+
+        for (var m = reg.exec(fmt); m; m = reg.exec(fmt)) {
+            var type = m[8] || m[5],
+                appender = type in appenderMap ? appenderMap[type] : appendObject,
+                precision = m[3] ? parseInt(m[3]) : (m[4] == "." ? -1 : 0);
+            parts.push(fmt.substr(0, m[0][0] == "%" ? m.index : m.index + 1));
+            parts.push({appender: appender, precision: precision});
+
+            fmt = fmt.substr(m.index + m[0].length);
+        }
+        if (fmt)
+            parts.push(fmt.toString());
+
+        return parts;
+    };
+
+    var parts = parseFormat(format),
+        str = "",
+        objIndex = 0;
+
+    for (var i = 0; i < parts.length; ++i) {
+        var part = parts[i];
+        if (part && typeof(part) == "object") {
+            var object = objects[objIndex++];
+            str += (part.appender || appendText)(object, str, part.precision);
+        } else {
+            str += appendText(part, str);
+        }
+    }
+    return str;
+}
+
+function makeArray(iterable) {
+    if (!iterable) return [];
+    if (iterable.toArray) return iterable.toArray();
+    var length = iterable.length,
+        results = new Array(length);
+    while (length--) results[length] = iterable[length];
+    return results;
+}
+
+function indent(str, indentString, depth) {
+    if (!depth || depth <= 0) return str;
+    while (depth > 0) { depth--; str = indentString + str; }
+    return str;
+}
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+module.exports = {
+    inspect: inspect
+}
+
+},{}],5:[function(require,module,exports){
+// helper
+function signatureOf(name, func) {
+    var source = String(func),
+        match = source.match(/function\s*[a-zA-Z0-9_$]*\s*\(([^\)]*)\)/),
+        params = (match && match[1]) || '';
+    return name + '(' + params + ')';
+}
+
+function isClass(obj) {
+    if (obj === obj
+      || obj === Array
+      || obj === Function
+      || obj === String
+      || obj === Boolean
+      || obj === Date
+      || obj === RegExp
+      || obj === Number) return true;
+    return (obj instanceof Function)
+        && ((obj.superclass !== undefined)
+         || (obj._superclass !== undefined));
+}
+
+function pluck(list, prop) { return list.map(function(ea) { return ea[prop]; }); }
+
+function getObjectForCompletion(evalFunc, stringToEval, thenDo) {
+    // thenDo = function(err, obj, startLetters)
+    var idx = stringToEval.lastIndexOf('.'),
+        startLetters = '';
+    if (idx >= 0) {
+        startLetters = stringToEval.slice(idx+1);
+        stringToEval = stringToEval.slice(0,idx);
+    }
+    var completions = [];
+    try {
+        var obj = evalFunc(stringToEval);
+    } catch (e) {
+        thenDo(e, null, null);
+    }
+    thenDo(null, obj, startLetters);
+}
+
+function propertyExtract(excludes, obj, extractor) {
+    // show(''+excludes)
+    return Object.getOwnPropertyNames(obj)
+        .filter(function(key) { return excludes.indexOf(key) === -1; })
+        .map(extractor)
+        .filter(function(ea) { return !!ea; })
+        .sort(function(a,b) {
+            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+}
+
+function getMethodsOf(excludes, obj) {
+    return propertyExtract(excludes, obj, function(key) {
+        if (obj.__lookupGetter__(key) || typeof obj[key] !== 'function') return null;
+        return {name: key, completion: signatureOf(key, obj[key])}; })
+}
+
+function getAttributesOf(excludes, obj) {
+    return propertyExtract(excludes, obj, function(key) {
+        if (!obj.__lookupGetter__(key) && typeof obj[key] === 'function') return null;
+        return {name: key, completion: key}; })
+}
+
+function getProtoChain(obj) {
+    var protos = [], proto = obj;
+    while (obj) { protos.push(obj); obj = obj.__proto__ }
+    return protos;
+}
+
+function getDescriptorOf(originalObj, proto) {
+    if (originalObj === proto) {
+        var descr = originalObj.toString()
+        if (descr.length > 50) descr = descr.slice(0,50) + '...';
+        return descr;
+    }
+    var klass = proto.hasOwnProperty('constructor') && proto.constructor;
+    if (!klass) return 'prototype';
+    if (typeof klass.type === 'string' && klass.type.length) return klass.type;
+    if (typeof klass.name === 'string' && klass.name.length) return klass.name;
+    return "anonymous class";
+}
+
+function getCompletions(evalFunc, string, thenDo) {
+    // thendo = function(err, completions/*ARRAY*/)
+    // eval string and for the resulting object find attributes and methods,
+    // grouped by its prototype / class chain
+    // if string is something like "foo().bar.baz" then treat "baz" as start
+    // letters = filter for properties of foo().bar
+    // ("foo().bar.baz." for props of the result of the complete string)
+    getObjectForCompletion(evalFunc, string, function(err, obj, startLetters) {
+        if (err) { thenDo(err); return }
+        var excludes = [];
+        var completions = getProtoChain(obj).map(function(proto) {
+            var descr = getDescriptorOf(obj, proto),
+                methodsAndAttributes = getMethodsOf(excludes, proto)
+                    .concat(getAttributesOf(excludes, proto));
+            excludes = excludes.concat(pluck(methodsAndAttributes, 'name'));
+            return [descr, pluck(methodsAndAttributes, 'completion')];
+        });
+        thenDo(err, completions, startLetters);
+    })
+}
+
+module.exports = getCompletions;
+},{}],6:[function(require,module,exports){
+var getCompletions = require('./completion');
+
 module.exports = {
 
     reportServices: function(msg, session) {
@@ -816,13 +1109,28 @@ module.exports = {
         session.answer(msg, {result: String(result)});
     },
 
+    completions: function(msg, session) {
+        getCompletions(
+            function(code) { return eval(code); },
+            msg.data.expr,
+            function(err, completions, startLetters) {
+                console.log(completions);
+                session.answer(msg, {
+                    error: err ? String(err) : null,
+                    completions: completions,
+                    prefix: startLetters
+                });
+            });
+    },
+
     messageNotUnderstood: function(msg, session) {
         console.error('Lively2Lively message not understood:\n%o', msg);
         session.answer(msg, {error: 'messageNotUnderstood'});
     }
 
 }
-},{}],5:[function(require,module,exports){
+
+},{"./completion":5}],7:[function(require,module,exports){
 var process=require("__browserify_process");if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -1018,7 +1326,7 @@ EventEmitter.listenerCount = function(emitter, type) {
   return ret;
 };
 
-},{"__browserify_process":9}],6:[function(require,module,exports){
+},{"__browserify_process":11}],8:[function(require,module,exports){
 
 /**
  * Object#toString() ref for stringify().
@@ -1337,7 +1645,7 @@ function decode(str) {
   }
 }
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 var punycode = { encode : function (s) { return s } };
 
 exports.parse = urlParse;
@@ -1943,7 +2251,7 @@ function parseHost(host) {
   return out;
 }
 
-},{"querystring":6}],8:[function(require,module,exports){
+},{"querystring":8}],10:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -2290,7 +2598,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":5}],9:[function(require,module,exports){
+},{"events":7}],11:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
