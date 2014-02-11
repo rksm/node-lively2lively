@@ -66,8 +66,8 @@ function inspect(obj, options, depth) {
         useNewLines = !isArray
                    && (!options.minLengthForNewLine
                     || printedPropsJoined.length >= options.minLengthForNewLine),
-        indent = indent('', options.indent || '  ', depth),
-        propIndent = indent('', options.indent || '  ', depth + 1),
+        indent = doIndent('', options.indent || '  ', depth),
+        propIndent = doIndent('', options.indent || '  ', depth + 1),
         startBreak = useNewLines ? '\n' + propIndent: '',
         endBreak = useNewLines ? '\n' + indent : '';
     if (useNewLines) printedPropsJoined = printedProps.join(',' + startBreak);
@@ -159,7 +159,7 @@ function makeArray(iterable) {
     return results;
 }
 
-function indent(str, indentString, depth) {
+function doIndent(str, indentString, depth) {
     if (!depth || depth <= 0) return str;
     while (depth > 0) { depth--; str = indentString + str; }
     return str;
