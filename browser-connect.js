@@ -14,6 +14,11 @@ function connect(options, thenDo) {
             getSessionsCacheInvalidationTimeout: 10*1000
         });
 
+    function unregister() { session.unregister(); }
+    document.addEventListener('onbeforeunload', unregister);
+    session.reactTo('closed', function() {
+        document.removeEventListener('onbeforeunload', unregister); })
+
     session.register();
     session.openForRequests();
     session.whenOnline(function() {
