@@ -1,4 +1,4 @@
-var Client = require('./nodejs-client').Client,
+var Client = require('./lib/nodejs-client').Client,
     url = require("url");
 
 function connect(options, thenDo) {

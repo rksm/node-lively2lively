@@ -1,5 +1,42 @@
 (function(e){if("function"==typeof bootstrap)bootstrap("lively2livelyconnect",e);else if("object"==typeof exports)module.exports=e();else if("function"==typeof define&&define.amd)define(e);else if("undefined"!=typeof ses){if(!ses.ok())return;ses.makeLively2livelyConnect=e}else"undefined"!=typeof window?window.lively2livelyConnect=e():global.lively2livelyConnect=e()})(function(){var define,ses,bootstrap,module,exports;
 return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var Connection = require('./lib/browser-client').Connection,
+    url        = require("url"),
+    services   = require('./lib/default-services'),
+    lv         = require('./lib/browser-lively-interface').noConflict('lv');
+
+function connect(options, thenDo) {
+    options = options || {};
+
+    var baseURL    = options.baseURL || "http://localhost:9001/",
+        connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
+        name       = options.name || "browser-alien",
+        session    = lv.l2lSession = new Connection({
+            sessionTrackerURL: connectURL,
+            username: name,
+            getSessionsCacheInvalidationTimeout: 10*1000
+        });
+
+    function unregister() { lv.l2lSession = null; session.unregister(); }
+    document.addEventListener('onbeforeunload', unregister);
+    session.reactTo('closed', function() {
+        document.removeEventListener('onbeforeunload', unregister); })
+
+    session.register();
+    session.openForRequests();
+    session.whenOnline(function() {
+        session.addActions(services);
+        thenDo(null, session);
+    });
+}
+
+// -=-=-=-
+// exports
+// -=-=-=-
+
+module.exports = connect;
+
+},{"./lib/browser-client":3,"./lib/browser-lively-interface":5,"./lib/default-services":7,"url":10}],2:[function(require,module,exports){
 var util         = require('util'),
     i            = util.inspect;
 
@@ -110,7 +147,7 @@ module.exports = {
     log: log
 };
 
-},{"util":10}],2:[function(require,module,exports){
+},{"util":11}],3:[function(require,module,exports){
 var util         = require('util'),
     i            = util.inspect,
     f            = util.format,
@@ -768,46 +805,7 @@ module.exports = {
     Connection: Connection,
 };
 
-},{"./base":1,"events":7,"util":10}],3:[function(require,module,exports){
-var Connection = require('./browser-client').Connection,
-    url        = require("url"),
-    services   = require('./default-services'),
-    dbgHelper  = require('./browser-helper');
-
-window._dbgHelper = dbgHelper;
-
-function connect(options, thenDo) {
-    options = options || {};
-
-    var baseURL = options.baseURL || "http://localhost:9001/",
-        connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
-        name = options.name || "browser-alien",
-        session = new Connection({
-            sessionTrackerURL: connectURL,
-            username: name,
-            getSessionsCacheInvalidationTimeout: 10*1000
-        });
-
-    function unregister() { session.unregister(); }
-    document.addEventListener('onbeforeunload', unregister);
-    session.reactTo('closed', function() {
-        document.removeEventListener('onbeforeunload', unregister); })
-
-    session.register();
-    session.openForRequests();
-    session.whenOnline(function() {
-        session.addActions(services);
-        thenDo(null, session);
-    });
-}
-
-// -=-=-=-
-// exports
-// -=-=-=-
-
-module.exports = connect;
-
-},{"./browser-client":2,"./browser-helper":4,"./default-services":6,"url":9}],4:[function(require,module,exports){
+},{"./base":2,"events":8,"util":11}],4:[function(require,module,exports){
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // debug helper -- inspecting
@@ -978,10 +976,24 @@ function doIndent(str, indentString, depth) {
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 module.exports = {
-    inspect: inspect
+    inspect: inspect,
+    format: format
 }
 
 },{}],5:[function(require,module,exports){
+
+var lv = {
+    noConflict: function(globalName) {
+        if (globalName) window[globalName] = lv;
+        return lv;
+    }
+}
+
+var helperFns  = require('./browser-helper');
+Object.keys(helperFns).forEach(function(k) { lv[k] = helperFns[k]; });
+
+module.exports = lv;
+},{"./browser-helper":4}],6:[function(require,module,exports){
 // helper
 function signatureOf(name, func) {
     var source = String(func),
@@ -1086,7 +1098,7 @@ function getCompletions(evalFunc, string, thenDo) {
 }
 
 module.exports = getCompletions;
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 var getCompletions = require('./completion');
 
 module.exports = {
@@ -1130,7 +1142,7 @@ module.exports = {
 
 }
 
-},{"./completion":5}],7:[function(require,module,exports){
+},{"./completion":6}],8:[function(require,module,exports){
 var process=require("__browserify_process");if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -1326,7 +1338,7 @@ EventEmitter.listenerCount = function(emitter, type) {
   return ret;
 };
 
-},{"__browserify_process":11}],8:[function(require,module,exports){
+},{"__browserify_process":12}],9:[function(require,module,exports){
 
 /**
  * Object#toString() ref for stringify().
@@ -1645,7 +1657,7 @@ function decode(str) {
   }
 }
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 var punycode = { encode : function (s) { return s } };
 
 exports.parse = urlParse;
@@ -2251,7 +2263,7 @@ function parseHost(host) {
   return out;
 }
 
-},{"querystring":8}],10:[function(require,module,exports){
+},{"querystring":9}],11:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -2598,7 +2610,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":7}],11:[function(require,module,exports){
+},{"events":8}],12:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -2652,7 +2664,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}]},{},[3])
-(3)
+},{}]},{},[1])
+(1)
 });
 ;
