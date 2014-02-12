@@ -28,7 +28,7 @@ report('Not connected...');
 log('Connecting...');
 
 document.addEventListener('DOMContentLoaded', function() {
-    lively2livelyConnect({}, function(err, session) {
+    lv.l2l.connect({}, function(err, session) {
         if (err) {
             console.error(err);
             report('Error: ' + err);

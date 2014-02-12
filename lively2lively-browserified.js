@@ -1,40 +1,45 @@
-(function(e){if("function"==typeof bootstrap)bootstrap("lively2livelyconnect",e);else if("object"==typeof exports)module.exports=e();else if("function"==typeof define&&define.amd)define(e);else if("undefined"!=typeof ses){if(!ses.ok())return;ses.makeLively2livelyConnect=e}else"undefined"!=typeof window?window.lively2livelyConnect=e():global.lively2livelyConnect=e()})(function(){var define,ses,bootstrap,module,exports;
-return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var Connection = require('./lib/browser-client').Connection,
     url        = require("url"),
     services   = require('./lib/default-services'),
     lv         = require('./lib/browser-lively-interface').noConflict('lv');
 
-function connect(options, thenDo) {
-    options = options || {};
+var l2l = {
+    connect: function connect(options, thenDo) {
+        options = options || {};
 
-    var baseURL    = options.baseURL || "http://localhost:9001/",
-        connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
-        name       = options.name || "browser-alien",
-        session    = lv.l2lSession = new Connection({
-            sessionTrackerURL: connectURL,
-            username: name,
-            getSessionsCacheInvalidationTimeout: 10*1000
+        var baseURL    = options.baseURL || "http://localhost:9001/",
+            connectURL = url.resolve(baseURL, "nodejs/SessionTracker/connect"),
+            name       = options.name || "browser-alien",
+            session    = l2l.session = new Connection({
+                sessionTrackerURL: connectURL,
+                username: name,
+                getSessionsCacheInvalidationTimeout: 10*1000
+            });
+
+        document.addEventListener('onbeforeunload', l2l.disconnect);
+        session.reactTo('closed', function() {
+            document.removeEventListener('onbeforeunload', l2l.disconnect); });
+
+        session.register();
+        session.openForRequests();
+        session.whenOnline(function() {
+            session.addActions(services);
+            thenDo(null, session);
         });
+    },
 
-    function unregister() { lv.l2lSession = null; session.unregister(); }
-    document.addEventListener('onbeforeunload', unregister);
-    session.reactTo('closed', function() {
-        document.removeEventListener('onbeforeunload', unregister); })
-
-    session.register();
-    session.openForRequests();
-    session.whenOnline(function() {
-        session.addActions(services);
-        thenDo(null, session);
-    });
-}
+    disconnect: function() {
+        var s = lv.l2l.session;
+        if (s) { s.unregister(); lv.l2l.session = null; }
+    }
+};
 
 // -=-=-=-
 // exports
 // -=-=-=-
 
-module.exports = connect;
+module.exports = lv.l2l = l2l;
 
 },{"./lib/browser-client":3,"./lib/browser-lively-interface":5,"./lib/default-services":7,"url":10}],2:[function(require,module,exports){
 var util         = require('util'),
@@ -2665,6 +2670,4 @@ process.chdir = function (dir) {
 };
 
 },{}]},{},[1])
-(1)
-});
 ;
