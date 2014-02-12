@@ -25,7 +25,7 @@ var l2l = {
         session.openForRequests();
         session.whenOnline(function() {
             session.addActions(services);
-            thenDo(null, session);
+            if (thenDo) thenDo(null, session);
         });
     },
 
