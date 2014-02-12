@@ -23,7 +23,7 @@ send back to your node server.
 
 ### Browser
 
-<!--nodemon -w browser-connect.js -x browserify browser-connect.js -s lively2livelyConnect -o examples/lively2lively-browserified.js-->
+<!--nodemon -x browserify browser-connect.js -o lively2lively-browserified.js-->
 
-1. Compile browser-connect.js via browserify: `browserify browser-connect.js -s lively2livelyConnect -o examples/lively2lively-browserified.js`
+1. Compile browser-connect.js via browserify: `browserify browser-connect.js -o lively2lively-browserified.js`
 2. Serve and visit examples/browser-connect.html

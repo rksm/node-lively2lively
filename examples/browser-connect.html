@@ -1,44 +1,25 @@
 <!DOCTYPE html>
 <html>
 <title>Lively2Lively from arbitrary browser session</title>
-<script type="text/javascript" src="../lively2lively-browserified.js"></script>
+<script type="text/javascript" src="../lively2lively-browserified.js?name=lively2browser-example&baseURL=http://localhost:9001&autoload=true"></script>
 </style>
 <h1>Lively2Lively Browser example</h1>
 <div id="status">
     <span>Status:</span>
     <span id="statusText"></span>
 </div>
-<br><br><br>
-<div id="log">
-    <span>Events:</span>
-</div>
 <script>
-
 function report(msg) {
     document.getElementById('statusText').innerHTML = msg;
 }
 
-function log(msg) {
-    var el = document.createElement('span');
-    el.innerHTML = '<br>' + msg;
-    document.getElementById('log').appendChild(el);
+function update() {
+    if (window.lv && window.lv.l2l.session)
+        report(lv.l2l.session);
+    setTimeout(update, 1000);
 }
 
 report('Not connected...');
-log('Connecting...');
-
-document.addEventListener('DOMContentLoaded', function() {
-    lv.l2l.connect({}, function(err, session) {
-        if (err) {
-            console.error(err);
-            report('Error: ' + err);
-            return;
-        }
-        report("Connected<br>session id: " + session.sessionId);
-        session.reactTo('established', function() { log('connected'); })
-        session.reactTo('connecting', function() { log('connecting'); })
-        session.reactTo('closed', function() { log('closed'); })
-    });
-});
+update();
 </script>
 </body></html>
