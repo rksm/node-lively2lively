@@ -4,8 +4,12 @@
 
 // where do we want to send a message to? Either use env var L2LTRACKERID or
 // commandline arg
-var targetSessionId = process.env.L2LTRACKERID || process.argv[2];
-var options = {baseURL: "http://localhost:9001", name: 'test-connection'};
+var env = process.env;
+var targetSessionId = env.L2L_TARGETSESSION || process.argv[2];
+var options = {
+    baseURL: env.L2L_SERVERURL || process.argv[3] || 'http://lively-web.org:8080',
+    name: 'test-connection'
+};
 
 require('../nodejs-connect')(options, function(err, session) {
     if (err) { console.error(err); return; }
