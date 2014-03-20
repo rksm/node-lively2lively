@@ -2,6 +2,9 @@
 // it will auto connect and register to the supplied l2l server behind baseURL.
 // You can then send messages to and from the nodejs process.
 
+// To try it out run:
+// node -e "require('./nodejs2lively.for-import')"
+
 var options = {
     baseURL: process.env.L2L_SERVERURL || 'http://lively-web.org:8080',
     name: process.env.L2L_CLIENTNAME || 'l2l-from-nodejs'
