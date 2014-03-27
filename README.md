@@ -1,6 +1,6 @@
 # node-2-lively
 
-Connect any node.js application to a lively2lively network.
+Connect any node.js application or webpage to a lively2lively network.
 
 ## Installation
 
